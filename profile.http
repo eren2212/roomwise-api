@@ -1,0 +1,148 @@
+### Test için değişkenler (VS Code REST Client extension ile kullanabilirsiniz)
+@baseUrl = http://localhost:3000
+@token = YOUR_JWT_TOKEN_HERE
+
+### ============================================
+### 1. Profil Oluştur (Tüm Bilgiler - Öğrenci)
+### ============================================
+POST {{baseUrl}}/profiles
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "full_name": "Eren Yılmaz",
+  "nickname": "eren",
+  "birth_date": "2000-01-15",
+  "gender": "male",
+  "occupation_status": "student",
+  "university": "Stanford University",
+  "department": "Computer Science",
+  "bio": "Merhaba, ben bir yazılım öğrencisiyim."
+}
+
+### ============================================
+### 1b. Profil Oluştur (Tüm Bilgiler - Profesyonel)
+### ============================================
+POST {{baseUrl}}/profiles
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "full_name": "Ahmet Demir",
+  "birth_date": "1995-05-20",
+  "gender": "male",
+  "occupation_status": "professional",
+  "occupation": "Software Engineer",
+  "bio": "10 yıllık deneyimli yazılım geliştiricisi"
+}
+
+### ============================================
+### 2. Kendi Profilini Getir
+### ============================================
+GET {{baseUrl}}/profiles/me
+Authorization: Bearer {{token}}
+
+### ============================================
+### 3. Profil Tamamlanma Durumunu Kontrol Et
+### ============================================
+GET {{baseUrl}}/profiles/me/check-completion
+Authorization: Bearer {{token}}
+
+### ============================================
+### 4. Hakkında Bilgilerini Güncelle (Profil oluşturulduktan sonra)
+### ============================================
+PATCH {{baseUrl}}/profiles/me/about
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "birth_date": "2000-01-20",
+  "gender": "female"
+}
+
+### ============================================
+### 5. Meslek Bilgilerini Güncelle - Öğrenci (Profil oluşturulduktan sonra)
+### ============================================
+PATCH {{baseUrl}}/profiles/me/occupation
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "occupation_status": "student",
+  "university": "MIT",
+  "department": "Artificial Intelligence"
+}
+
+### ============================================
+### 6. Meslek Bilgilerini Güncelle - Profesyonel (Profil oluşturulduktan sonra)
+### ============================================
+PATCH {{baseUrl}}/profiles/me/occupation
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "occupation_status": "professional",
+  "occupation": "Senior Software Engineer"
+}
+
+### ============================================
+### 7. Avatar Yükle
+### ============================================
+POST {{baseUrl}}/profiles/me/avatar
+Authorization: Bearer {{token}}
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary
+
+------WebKitFormBoundary
+Content-Disposition: form-data; name="avatar"; filename="avatar.jpg"
+Content-Type: image/jpeg
+
+< ./path/to/your/avatar.jpg
+------WebKitFormBoundary--
+
+### ============================================
+### 8. Soru Kataloğunu Getir
+### ============================================
+GET {{baseUrl}}/profiles/questions
+Authorization: Bearer {{token}}
+
+### ============================================
+### 9. Tercihleri Getir
+### ============================================
+GET {{baseUrl}}/profiles/preferences
+Authorization: Bearer {{token}}
+
+### ============================================
+### 10. Tercihleri Güncelle/Oluştur
+### ============================================
+PUT {{baseUrl}}/profiles/preferences
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "smoking": "no_smoke",
+  "alcohol": "social",
+  "pets": "have_pets",
+  "sleep": "night_owl",
+  "guests": "rarely",
+  "cleanliness": "moderate",
+  "communication": "balanced",
+  "cooking": "basic_cook"
+}
+
+### ============================================
+### 11. Profil Güncelle (Genel)
+### ============================================
+PATCH {{baseUrl}}/profiles/me
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "full_name": "Eren Yılmaz Güncellendi",
+  "bio": "Merhaba, ben bir yazılım geliştiricisiyim."
+}
+
+### ============================================
+### 12. Onboarding'i Tamamla
+### ============================================
+POST {{baseUrl}}/profiles/me/complete-onboarding
+Authorization: Bearer {{token}}

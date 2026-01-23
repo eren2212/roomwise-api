@@ -21,7 +21,7 @@ export class SupabaseGuard implements CanActivate {
   constructor(private configService: ConfigService) {
     this.supabase = createClient(
       this.configService.get<string>('SUPABASE_URL')!,
-      this.configService.get<string>('SUPABASE_KEY')!,
+      this.configService.get<string>('SUPABASE_SERVICE_ROLE')!,
     );
   }
 

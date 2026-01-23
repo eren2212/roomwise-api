@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { LoginDto } from './dto/login.dto';
+import { LoginDto, RegisterDto } from './dto/login.dto';
 import { Database } from 'src/database.types';
 
 @Injectable()
@@ -12,7 +12,7 @@ export class AuthService {
   constructor(private configService: ConfigService) {
     this.supabase = createClient(
       this.configService.get<string>('SUPABASE_URL')!,
-      this.configService.get<string>('SUPABASE_KEY')!,
+      this.configService.get<string>('SUPABASE_SERVICE_ROLE')!,
     );
 
     this.supabaseAdmin = createClient(
@@ -21,7 +21,7 @@ export class AuthService {
     );
   }
 
-  async kayitOl(body: LoginDto) {
+  async kayitOl(body: RegisterDto) {
     return this.supabase.auth.signUp({
       email: body.email,
       password: body.password,
