@@ -372,19 +372,72 @@ export class ProfileService {
   // AVATAR DOWNLOAD
   // ============================================
 
-  async downloadAvatar(filename: string): Promise<{ buffer: Buffer }> {
+  async getAvatar(
+    filename: string,
+  ): Promise<{ buffer: Buffer; contentType: string }> {
+    // 1. Güvenlik Kontrolü: Path Traversal saldırılarını engelle
+    if (!filename || filename.includes('..') || filename.includes('/')) {
+      throw new BadRequestException('Geçersiz dosya adı');
+    }
+
+    // 2. Supabase Storage'dan dosyayı indir
     const { data, error } = await this.supabase.storage
       .from('avatars')
       .download(filename);
 
     if (error || !data) {
-      throw new BadRequestException('Avatar bulunamadı');
+      throw new NotFoundException('Avatar resmi bulunamadı');
     }
 
+    // 3. Dosya tipini belirle (Express kodundaki mantık)
+    let contentType = 'image/jpeg'; // Varsayılan
+    if (filename.endsWith('.png')) {
+      contentType = 'image/png';
+    } else if (filename.endsWith('.webp')) {
+      contentType = 'image/webp';
+    }
+
+    // 4. Blob verisini Buffer'a çevir
     const arrayBuffer = await data.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    return { buffer };
+    return { buffer, contentType };
+  }
+
+  /**
+   * Avatar'ı public olarak indir (RLS bypass)
+   * Bu metod authentication gerektirmez
+   */
+  async downloadAvatar(
+    filename: string,
+  ): Promise<{ buffer: Buffer; contentType: string }> {
+    // 1. Güvenlik Kontrolü: Path Traversal saldırılarını engelle
+    if (!filename || filename.includes('..') || filename.includes('/')) {
+      throw new BadRequestException('Geçersiz dosya adı');
+    }
+
+    // 2. Supabase Storage'dan dosyayı indir
+    const { data, error } = await this.supabase.storage
+      .from('avatars')
+      .download(filename);
+
+    if (error || !data) {
+      throw new NotFoundException('Avatar resmi bulunamadı');
+    }
+
+    // 3. Dosya tipini belirle
+    let contentType = 'image/jpeg'; // Varsayılan
+    if (filename.endsWith('.png')) {
+      contentType = 'image/png';
+    } else if (filename.endsWith('.webp')) {
+      contentType = 'image/webp';
+    }
+
+    // 4. Blob verisini Buffer'a çevir
+    const arrayBuffer = await data.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    return { buffer, contentType };
   }
 
   // ============================================

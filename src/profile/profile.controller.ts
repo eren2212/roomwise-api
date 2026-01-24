@@ -17,6 +17,7 @@ import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ProfileService } from './profile.service';
 import { SupabaseGuard } from '../auth/supabase.guard';
+import { Public } from '../auth/public.decorator';
 import type { RequestWithUser } from '../auth/supabase.guard';
 import {
   CreateProfileDto,
@@ -195,6 +196,29 @@ export class ProfileController {
     };
   }
 
+  @Get('me/avatar/:filename')
+  async getAvatar(
+    @Param('filename') filename: string,
+    @Res() res: Response, // Express response objesine erişim
+  ) {
+    // Service'den buffer ve content type'ı al
+    const { buffer, contentType } = await this.profileService.getAvatar(
+      filename,
+    );
+    if (!buffer || !contentType) {
+      throw new BadRequestException('Avatar bulunamadı');
+    }
+
+    // Header ayarları (Cache ve Type)
+    res.set({
+      'Content-Type': contentType,
+      'Content-Length': buffer.length.toString(),
+      'Cache-Control': 'public, max-age=31536000', // 1 yıl cache
+    });
+
+    // Buffer'ı client'a gönder
+    res.send(buffer);
+  }
   // ============================================
   // PREFERENCES ENDPOINTS
   // ============================================
@@ -250,6 +274,7 @@ export class ProfileController {
    * Avatar resmini download et
    * Public endpoint - herkes görebilir
    */
+  @Public()
   @Get('avatar/:filename')
   async downloadAvatar(@Param('filename') filename: string, @Res() res: Response) {
     try {
