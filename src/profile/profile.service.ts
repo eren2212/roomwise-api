@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
@@ -37,7 +38,7 @@ export class ProfileService {
   ): Promise<Profile> {
     // Önce profil var mı kontrol et
     const existingProfile = await this.getProfileByUserId(userId);
-    if (existingProfile) {
+    if (existingProfile?.has_seen_onboarding) {
       throw new ConflictException('Bu kullanıcının zaten bir profili var');
     }
 
@@ -50,17 +51,6 @@ export class ProfileService {
       occupation_status: createProfileDto.occupation_status,
     };
 
-    // Opsiyonel alanlar
-    if (createProfileDto.nickname) {
-      profileData.nickname = createProfileDto.nickname;
-    }
-    if (createProfileDto.avatar_url) {
-      profileData.avatar_url = createProfileDto.avatar_url;
-    }
-    if (createProfileDto.bio) {
-      profileData.bio = createProfileDto.bio;
-    }
-
     // Occupation durumuna göre ilgili alanları ekle
     if (createProfileDto.occupation_status === 'student') {
       profileData.university = createProfileDto.university;
@@ -71,7 +61,7 @@ export class ProfileService {
 
     const { data, error } = await this.supabase
       .from('profiles')
-      .insert(profileData)
+      .upsert(profileData)
       .select()
       .single();
 
@@ -221,33 +211,90 @@ export class ProfileService {
     userId: string,
     file: Express.Multer.File,
   ): Promise<{ avatar_url: string }> {
-    const fileExt = file.originalname.split('.').pop();
-    const fileName = `${userId}-${Date.now()}.${fileExt}`;
-    const filePath = `${userId}/${fileName}`;
+    
+    // ---------------------------------------------------------
+    // ADIM 1: Mevcut avatar URL'ini kontrol et (Eski resmi bul)
+    // ---------------------------------------------------------
+    const { data: currentProfile, error: fetchError } = await this.supabase
+      .from('profiles')
+      .select('avatar_url')
+      .eq('id', userId)
+      .single();
 
-    // Upload to Supabase Storage
-    const { data, error } = await this.supabase.storage
+    // Eğer profil hiç yoksa veya hata varsa, kritik değilse devam edebiliriz 
+    // ama fetchError varsa loglamak iyidir.
+    if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116: Veri bulunamadı hatası (normal)
+       console.error('Profil getirme hatası:', fetchError);
+    }
+
+    // ---------------------------------------------------------
+    // ADIM 2: Eski avatar varsa storage'dan sil
+    // ---------------------------------------------------------
+    if (currentProfile?.avatar_url) {
+      const oldFileName = currentProfile.avatar_url;
+      
+      // Sadece dosya ismini tuttuğumuz için direkt silebiliriz
+      const { error: deleteError } = await this.supabase.storage
+        .from('avatars')
+        .remove([oldFileName]);
+
+      if (deleteError) {
+        console.warn('Eski avatar silinemedi (önemsiz):', deleteError.message);
+      }
+    }
+
+    // ---------------------------------------------------------
+    // ADIM 3: Yeni dosya adı oluştur (unique)
+    // ---------------------------------------------------------
+    // Dosya uzantısını al (önceki konuşmamızdaki mime-type garantisi ile)
+    const fileExt = file.originalname.split('.').pop() || 'jpg';
+    const fileName = `${userId}-${Date.now()}.${fileExt}`;
+    // Bucket içinde klasör yapısı kullanıyorsan: `${userId}/${fileName}`
+    // Express kodunda düz fileName kullanmışsın, ona sadık kalıyorum:
+    const filePath = fileName; 
+
+    // ---------------------------------------------------------
+    // ADIM 4: Yeni avatar'ı storage'a yükle
+    // ---------------------------------------------------------
+    const { error: uploadError } = await this.supabase.storage
       .from('avatars')
       .upload(filePath, file.buffer, {
         contentType: file.mimetype,
-        upsert: true,
+        upsert: false, // Aynı isimde dosya varsa üzerine yazmasın, zaten timestamp ile unique yaptık
       });
 
-    if (error) {
-      throw new BadRequestException(
-        `Avatar yüklenemedi: ${error.message}`,
-      );
+    if (uploadError) {
+      throw new BadRequestException(`Avatar storage'a yüklenemedi: ${uploadError.message}`);
     }
 
-    // Get public URL
-    const {
-      data: { publicUrl },
-    } = this.supabase.storage.from('avatars').getPublicUrl(filePath);
+    // ---------------------------------------------------------
+    // ADIM 5 & 6: Profil Tablosunu Güncelle (UPSERT KULLANIMI)
+    // ---------------------------------------------------------
+    // BURASI KRİTİK NOKTA: 'insert' yerine 'upsert' kullanıyoruz.
+    // Upsert mantığı: ID eşleşiyorsa UPDATE yap, eşleşmiyorsa INSERT yap.
+    // Bu sayede "duplicate key" hatası almazsın.
+    
+    const { data: updatedProfile, error: dbError } = await this.supabase
+      .from('profiles')
+      .upsert({
+        id: userId,          // Bu ID'ye bakacak (Primary Key)
+        avatar_url: filePath, // Sadece filename'i kaydediyoruz
+        updated_at: new Date().toISOString(), // Varsa böyle bir alanın
+      })
+      .select()
+      .single();
 
-    // Update profile with avatar URL
-    await this.updateProfile(userId, { avatar_url: publicUrl });
+    if (dbError) {
+      // DB güncellemesi başarısız olursa, az önce yüklediğimiz resmi geri silmeliyiz (Cleanup)
+      await this.supabase.storage.from('avatars').remove([filePath]);
+      
+      throw new BadRequestException(`Profil veritabanında güncellenemedi: ${dbError.message}`);
+    }
 
-    return { avatar_url: publicUrl };
+    // ---------------------------------------------------------
+    // ADIM 7: Sonuç Döndür
+    // ---------------------------------------------------------
+    return { avatar_url: filePath };
   }
 
   // ============================================
