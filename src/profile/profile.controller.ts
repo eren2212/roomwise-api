@@ -12,6 +12,7 @@ import {
   BadRequestException,
   Param,
   Res,
+  Req,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -21,8 +22,6 @@ import { Public } from '../auth/public.decorator';
 import type { RequestWithUser } from '../auth/supabase.guard';
 import {
   CreateProfileDto,
-  UpdateAboutDto,
-  UpdateOccupationDto,
   UpdatePreferencesDto,
   UpdateProfileDto,
 } from './dto';
@@ -72,20 +71,10 @@ export class ProfileController {
     };
   }
 
-  /**
-   * Profil Güncelleme (Genel) - Profil oluşturulduktan sonra
-   * kullanıcı profil sayfasından bilgilerini güncelleyebilir
-   */
-  @Patch('me')
-  async updateProfile(
-    @Request() req: RequestWithUser,
-    @Body() updateProfileDto: UpdateProfileDto,
-  ) {
+  @Patch("me")  
+  async updateProfile(@Request() req: RequestWithUser, @Body() updateProfileDto: UpdateProfileDto) {
     const userId = req.user!.id;
-    const profile = await this.profileService.updateProfile(
-      userId,
-      updateProfileDto,
-    );
+    const profile = await this.profileService.updateProfile(userId, updateProfileDto);
 
     return {
       success: true,
@@ -93,49 +82,6 @@ export class ProfileController {
       data: profile,
     };
   }
-
-  /**
-   * Hakkında Bilgilerini Güncelle (Sonradan düzenleme için)
-   */
-  @Patch('me/about')
-  async updateAbout(
-    @Request() req: RequestWithUser,
-    @Body() updateAboutDto: UpdateAboutDto,
-  ) {
-    const userId = req.user!.id;
-    const profile = await this.profileService.updateAbout(
-      userId,
-      updateAboutDto,
-    );
-
-    return {
-      success: true,
-      message: 'Hakkında bilgileri güncellendi',
-      data: profile,
-    };
-  }
-
-  /**
-   * Meslek Bilgilerini Güncelle (Sonradan düzenleme için)
-   */
-  @Patch('me/occupation')
-  async updateOccupation(
-    @Request() req: RequestWithUser,
-    @Body() updateOccupationDto: UpdateOccupationDto,
-  ) {
-    const userId = req.user!.id;
-    const profile = await this.profileService.updateOccupation(
-      userId,
-      updateOccupationDto,
-    );
-
-    return {
-      success: true,
-      message: 'Meslek bilgileri güncellendi',
-      data: profile,
-    };
-  }
-
   @Post('me/complete-onboarding')
   async completeOnboarding(@Request() req: RequestWithUser) {
     const userId = req.user!.id;

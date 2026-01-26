@@ -6,18 +6,7 @@ import {
   IsEnum,
   ValidateIf,
 } from 'class-validator';
-
-export enum Gender {
-  MALE = 'male',
-  FEMALE = 'female',
-  NON_BINARY = 'non_binary',
-  PREFER_NOT_TO_SAY = 'prefer_not_to_say',
-}
-
-export enum OccupationStatus {
-  STUDENT = 'student',
-  PROFESSIONAL = 'professional',
-}
+import { Gender, OccupationStatus } from './enums.dto';
 
 export class CreateProfileDto {
   // Step 1: Temel Bilgiler

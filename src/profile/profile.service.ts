@@ -9,8 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import {
   CreateProfileDto,
-  UpdateAboutDto,
-  UpdateOccupationDto,
+  OccupationStatus,
   UpdatePreferencesDto,
   UpdateProfileDto,
 } from './dto';
@@ -29,6 +28,58 @@ export class ProfileService {
   }
 
   // ============================================
+  // VALIDATION HELPERS
+  // ============================================
+
+  /**
+   * Occupation status değişikliklerinde gerekli alanları kontrol eder
+   */
+  private validateOccupationData(
+    occupationStatus: string,
+    updateDto: UpdateProfileDto,
+  ): void {
+    if (occupationStatus === OccupationStatus.STUDENT) {
+      // Öğrenci ise, eğer university veya department gönderilmişse kontrol et
+      if (updateDto.university !== undefined || updateDto.department !== undefined) {
+        if (!updateDto.university || !updateDto.department) {
+          throw new BadRequestException(
+            'Öğrenci statüsü için hem üniversite hem de bölüm bilgisi gereklidir',
+          );
+        }
+      }
+    } else if (occupationStatus === OccupationStatus.PROFESSIONAL) {
+      // Profesyonel ise, eğer occupation gönderilmişse kontrol et
+      if (updateDto.occupation !== undefined && !updateDto.occupation) {
+        throw new BadRequestException(
+          'Profesyonel statüsü için meslek bilgisi gereklidir',
+        );
+      }
+    }
+  }
+
+  /**
+   * Yaş hesaplama ve validasyon (18 yaş üstü kontrolü)
+   */
+  private validateAge(birthDate: string): void {
+    const birth = new Date(birthDate);
+    const today = new Date();
+    const age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    
+    const actualAge = monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())
+      ? age - 1
+      : age;
+
+    if (actualAge < 18) {
+      throw new BadRequestException('18 yaşından küçükler kayıt olamaz');
+    }
+
+    if (actualAge > 100) {
+      throw new BadRequestException('Geçersiz doğum tarihi');
+    }
+  }
+
+  // ============================================
   // PROFILE CRUD OPERATIONS
   // ============================================
 
@@ -41,6 +92,9 @@ export class ProfileService {
     if (existingProfile?.has_seen_onboarding) {
       throw new ConflictException('Bu kullanıcının zaten bir profili var');
     }
+
+    // Yaş validasyonu
+    this.validateAge(createProfileDto.birth_date);
 
     // Profil verisini hazırla
     const profileData: any = {
@@ -92,95 +146,64 @@ export class ProfileService {
     return data as Profile;
   }
 
-  async getMyProfile(userId: string): Promise<Profile> {
+  async getMyProfile(userId: string): Promise<Profile | null> {
     const profile = await this.getProfileByUserId(userId);
+    return profile; // Artık null dönebilir, hata fırlatmaz
+  }
 
-    if (!profile) {
+  async updateProfile(userId: string, updateProfileDto: UpdateProfileDto) {
+    // 1. Önce mevcut profili kontrol et
+    const existingProfile = await this.getProfileByUserId(userId);
+    if (!existingProfile) {
       throw new NotFoundException('Profil bulunamadı');
     }
 
-    return profile;
-  }
-
-  async updateProfile(
-    userId: string,
-    updateProfileDto: UpdateProfileDto,
-  ): Promise<Profile> {
-    const { data, error } = await this.supabase
-      .from('profiles')
-      .update({
-        ...updateProfileDto,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', userId)
-      .select()
-      .single();
-
-    if (error) {
-      throw new BadRequestException(
-        `Profil güncellenemedi: ${error.message}`,
-      );
+    // 2. Yaş validasyonu (eğer birth_date güncellenmişse)
+    if (updateProfileDto.birth_date) {
+      this.validateAge(updateProfileDto.birth_date);
     }
 
-    return data as Profile;
-  }
-
-  async updateAbout(
-    userId: string,
-    updateAboutDto: UpdateAboutDto,
-  ): Promise<Profile> {
-    const { data, error } = await this.supabase
-      .from('profiles')
-      .update({
-        birth_date: updateAboutDto.birth_date,
-        gender: updateAboutDto.gender,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', userId)
-      .select()
-      .single();
-
-    if (error) {
-      throw new BadRequestException(
-        `Profil güncellenemedi: ${error.message}`,
-      );
+    // 3. Occupation validasyonu
+    if (updateProfileDto.occupation_status) {
+      this.validateOccupationData(updateProfileDto.occupation_status, updateProfileDto);
     }
 
-    return data as Profile;
-  }
-
-  async updateOccupation(
-    userId: string,
-    updateOccupationDto: UpdateOccupationDto,
-  ): Promise<Profile> {
-    const updateData: any = {
-      occupation_status: updateOccupationDto.occupation_status,
+    // 4. Güncellenecek veriyi hazırla
+    const updates: any = {
+      ...updateProfileDto,
       updated_at: new Date().toISOString(),
     };
 
-    // Eğer student ise university ve department ekle
-    if (updateOccupationDto.occupation_status === 'student') {
-      updateData.university = updateOccupationDto.university;
-      updateData.department = updateOccupationDto.department;
-    } else {
-      // Professional ise occupation ekle
-      updateData.occupation = updateOccupationDto.occupation;
+    // 5. Business Logic: Occupation status değişikliğine göre temizlik yap
+    if (updateProfileDto.occupation_status) {
+      if (updateProfileDto.occupation_status === OccupationStatus.STUDENT) {
+        // Öğrenci seçildiyse, meslek bilgisini temizle
+        updates.occupation = null;
+        
+        // Eğer university veya department gönderilmediyse, mevcut değerleri koru
+        // (Frontend kısmi güncelleme yapabilir)
+      } else if (updateProfileDto.occupation_status === OccupationStatus.PROFESSIONAL) {
+        // Profesyonel seçildiyse, okul bilgilerini temizle
+        updates.university = null;
+        updates.department = null;
+        
+        // Eğer occupation gönderilmediyse, mevcut değeri koru
+      }
     }
 
+    // 6. Supabase'e güncelleme sorgusu gönder
     const { data, error } = await this.supabase
       .from('profiles')
-      .update(updateData)
+      .update(updates)
       .eq('id', userId)
       .select()
       .single();
 
     if (error) {
-      throw new BadRequestException(
-        `Profil güncellenemedi: ${error.message}`,
-      );
+      throw new BadRequestException(`Profil güncellenemedi: ${error.message}`);
     }
 
-    return data as Profile;
+    return data;
   }
 
   async markOnboardingComplete(userId: string): Promise<Profile> {
