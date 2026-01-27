@@ -25,6 +25,7 @@ import {
   UpdatePreferencesDto,
   UpdateProfileDto,
 } from './dto';
+import { UpdateLocationDto } from './dto/update-location.dto';
 
 @Controller('profiles')
 @UseGuards(SupabaseGuard)
@@ -247,5 +248,24 @@ export class ProfileController {
         message: error.message,
       });
     }
+  }
+
+  // Location güncelle (konum + tercih edilen ilçe)
+  @Patch('location')
+  async updateLocation(
+    @Req() req: RequestWithUser,
+    @Body() updateLocationDto: UpdateLocationDto,
+  ) {
+    const userId = req.user?.id;
+    if (!userId) {
+      throw new BadRequestException('User ID bulunamadı');
+    }
+
+    return this.profileService.updateLocation(
+      userId,
+      updateLocationDto.preferred_district_text,
+      updateLocationDto.latitude,
+      updateLocationDto.longitude,
+    );
   }
 }

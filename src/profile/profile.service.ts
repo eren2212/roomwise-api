@@ -553,4 +553,37 @@ export class ProfileService {
       nextStep: profile.has_seen_onboarding ? null : 'complete_onboarding',
     };
   }
+
+  // Location güncelle
+  async updateLocation(
+    userId: string,
+    districtText: string,
+    latitude: number,
+    longitude: number,
+  ) {
+    try {
+      // PostGIS POINT formatında konum güncelle
+      const { data, error } = await this.supabase
+        .from('profiles')
+        .update({
+          preferred_district_text: districtText,
+          location: `POINT(${longitude} ${latitude})`, // PostGIS formatı: POINT(lng lat)
+        })
+        .eq('id', userId)
+        .select()
+        .single();
+
+      if (error) {
+        throw new Error(`Location güncellenemedi: ${error.message}`);
+      }
+
+      return {
+        success: true,
+        message: 'Konum başarıyla güncellendi',
+        data,
+      };
+    } catch (error: any) {
+      throw new Error(error.message || 'Location güncelleme hatası');
+    }
+  }
 }
