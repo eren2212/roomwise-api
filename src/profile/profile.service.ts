@@ -14,6 +14,7 @@ import {
   UpdateProfileDto,
 } from './dto';
 import type { Profile, UserPreferences, QuestionCatalog } from './entities';
+import * as wkx from 'wkx'; // Geometry parse etmek için lazım
 
 @Injectable()
 export class ProfileService {
@@ -40,7 +41,10 @@ export class ProfileService {
   ): void {
     if (occupationStatus === OccupationStatus.STUDENT) {
       // Öğrenci ise, eğer university veya department gönderilmişse kontrol et
-      if (updateDto.university !== undefined || updateDto.department !== undefined) {
+      if (
+        updateDto.university !== undefined ||
+        updateDto.department !== undefined
+      ) {
         if (!updateDto.university || !updateDto.department) {
           throw new BadRequestException(
             'Öğrenci statüsü için hem üniversite hem de bölüm bilgisi gereklidir',
@@ -65,10 +69,11 @@ export class ProfileService {
     const today = new Date();
     const age = today.getFullYear() - birth.getFullYear();
     const monthDiff = today.getMonth() - birth.getMonth();
-    
-    const actualAge = monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())
-      ? age - 1
-      : age;
+
+    const actualAge =
+      monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())
+        ? age - 1
+        : age;
 
     if (actualAge < 18) {
       throw new BadRequestException('18 yaşından küçükler kayıt olamaz');
@@ -120,9 +125,7 @@ export class ProfileService {
       .single();
 
     if (error) {
-      throw new BadRequestException(
-        `Profil oluşturulamadı: ${error.message}`,
-      );
+      throw new BadRequestException(`Profil oluşturulamadı: ${error.message}`);
     }
 
     return data as Profile;
@@ -165,7 +168,10 @@ export class ProfileService {
 
     // 3. Occupation validasyonu
     if (updateProfileDto.occupation_status) {
-      this.validateOccupationData(updateProfileDto.occupation_status, updateProfileDto);
+      this.validateOccupationData(
+        updateProfileDto.occupation_status,
+        updateProfileDto,
+      );
     }
 
     // 4. Güncellenecek veriyi hazırla
@@ -179,14 +185,16 @@ export class ProfileService {
       if (updateProfileDto.occupation_status === OccupationStatus.STUDENT) {
         // Öğrenci seçildiyse, meslek bilgisini temizle
         updates.occupation = null;
-        
+
         // Eğer university veya department gönderilmediyse, mevcut değerleri koru
         // (Frontend kısmi güncelleme yapabilir)
-      } else if (updateProfileDto.occupation_status === OccupationStatus.PROFESSIONAL) {
+      } else if (
+        updateProfileDto.occupation_status === OccupationStatus.PROFESSIONAL
+      ) {
         // Profesyonel seçildiyse, okul bilgilerini temizle
         updates.university = null;
         updates.department = null;
-        
+
         // Eğer occupation gönderilmediyse, mevcut değeri koru
       }
     }
@@ -234,7 +242,6 @@ export class ProfileService {
     userId: string,
     file: Express.Multer.File,
   ): Promise<{ avatar_url: string }> {
-    
     // ---------------------------------------------------------
     // ADIM 1: Mevcut avatar URL'ini kontrol et (Eski resmi bul)
     // ---------------------------------------------------------
@@ -244,10 +251,11 @@ export class ProfileService {
       .eq('id', userId)
       .single();
 
-    // Eğer profil hiç yoksa veya hata varsa, kritik değilse devam edebiliriz 
+    // Eğer profil hiç yoksa veya hata varsa, kritik değilse devam edebiliriz
     // ama fetchError varsa loglamak iyidir.
-    if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116: Veri bulunamadı hatası (normal)
-       console.error('Profil getirme hatası:', fetchError);
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      // PGRST116: Veri bulunamadı hatası (normal)
+      console.error('Profil getirme hatası:', fetchError);
     }
 
     // ---------------------------------------------------------
@@ -255,7 +263,7 @@ export class ProfileService {
     // ---------------------------------------------------------
     if (currentProfile?.avatar_url) {
       const oldFileName = currentProfile.avatar_url;
-      
+
       // Sadece dosya ismini tuttuğumuz için direkt silebiliriz
       const { error: deleteError } = await this.supabase.storage
         .from('avatars')
@@ -274,7 +282,7 @@ export class ProfileService {
     const fileName = `${userId}-${Date.now()}.${fileExt}`;
     // Bucket içinde klasör yapısı kullanıyorsan: `${userId}/${fileName}`
     // Express kodunda düz fileName kullanmışsın, ona sadık kalıyorum:
-    const filePath = fileName; 
+    const filePath = fileName;
 
     // ---------------------------------------------------------
     // ADIM 4: Yeni avatar'ı storage'a yükle
@@ -287,7 +295,9 @@ export class ProfileService {
       });
 
     if (uploadError) {
-      throw new BadRequestException(`Avatar storage'a yüklenemedi: ${uploadError.message}`);
+      throw new BadRequestException(
+        `Avatar storage'a yüklenemedi: ${uploadError.message}`,
+      );
     }
 
     // ---------------------------------------------------------
@@ -296,11 +306,11 @@ export class ProfileService {
     // BURASI KRİTİK NOKTA: 'insert' yerine 'upsert' kullanıyoruz.
     // Upsert mantığı: ID eşleşiyorsa UPDATE yap, eşleşmiyorsa INSERT yap.
     // Bu sayede "duplicate key" hatası almazsın.
-    
+
     const { data: updatedProfile, error: dbError } = await this.supabase
       .from('profiles')
       .upsert({
-        id: userId,          // Bu ID'ye bakacak (Primary Key)
+        id: userId, // Bu ID'ye bakacak (Primary Key)
         avatar_url: filePath, // Sadece filename'i kaydediyoruz
         updated_at: new Date().toISOString(), // Varsa böyle bir alanın
       })
@@ -310,8 +320,10 @@ export class ProfileService {
     if (dbError) {
       // DB güncellemesi başarısız olursa, az önce yüklediğimiz resmi geri silmeliyiz (Cleanup)
       await this.supabase.storage.from('avatars').remove([filePath]);
-      
-      throw new BadRequestException(`Profil veritabanında güncellenemedi: ${dbError.message}`);
+
+      throw new BadRequestException(
+        `Profil veritabanında güncellenemedi: ${dbError.message}`,
+      );
     }
 
     // ---------------------------------------------------------
@@ -336,9 +348,7 @@ export class ProfileService {
       if (error.code === 'PGRST116') {
         return null;
       }
-      throw new BadRequestException(
-        `Tercihler getirilemedi: ${error.message}`,
-      );
+      throw new BadRequestException(`Tercihler getirilemedi: ${error.message}`);
     }
 
     return data as UserPreferences;
@@ -585,5 +595,35 @@ export class ProfileService {
     } catch (error: any) {
       throw new Error(error.message || 'Location güncelleme hatası');
     }
+  }
+
+  async getLocation(userId: string) {
+    const { data, error } = await this.supabase
+      .from('profiles')
+      .select('location, preferred_district_text') // Hex formatında gelir (örn: 0101000020E6100000...)
+      .eq('id', userId)
+      .single();
+
+    if (error) {
+      throw new Error(`Location alınamadı: ${error.message}`);
+    }
+
+    if (!data.location) {
+      return null; // Konum yoksa null dön
+    }
+
+    // 1. Hex string'i Buffer'a çevir
+    const buffer = Buffer.from(data.location, 'hex');
+
+    // 2. wkx ile parse et
+    const geometry = wkx.Geometry.parse(buffer) as wkx.Point;
+
+    // 3. X ve Y değerlerini al (Dikkat: X=Longitude, Y=Latitude)
+    // GeoJSON formatına çevirip döndürüyoruz
+    return {
+      latitude: geometry.y,
+      longitude: geometry.x,
+      districtText: data.preferred_district_text as string,
+    };
   }
 }

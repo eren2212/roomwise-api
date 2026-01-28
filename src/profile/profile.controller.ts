@@ -72,10 +72,16 @@ export class ProfileController {
     };
   }
 
-  @Patch("me")  
-  async updateProfile(@Request() req: RequestWithUser, @Body() updateProfileDto: UpdateProfileDto) {
+  @Patch('me')
+  async updateProfile(
+    @Request() req: RequestWithUser,
+    @Body() updateProfileDto: UpdateProfileDto,
+  ) {
     const userId = req.user!.id;
-    const profile = await this.profileService.updateProfile(userId, updateProfileDto);
+    const profile = await this.profileService.updateProfile(
+      userId,
+      updateProfileDto,
+    );
 
     return {
       success: true,
@@ -149,9 +155,8 @@ export class ProfileController {
     @Res() res: Response, // Express response objesine erişim
   ) {
     // Service'den buffer ve content type'ı al
-    const { buffer, contentType } = await this.profileService.getAvatar(
-      filename,
-    );
+    const { buffer, contentType } =
+      await this.profileService.getAvatar(filename);
     if (!buffer || !contentType) {
       throw new BadRequestException('Avatar bulunamadı');
     }
@@ -223,7 +228,10 @@ export class ProfileController {
    */
   @Public()
   @Get('avatar/:filename')
-  async downloadAvatar(@Param('filename') filename: string, @Res() res: Response) {
+  async downloadAvatar(
+    @Param('filename') filename: string,
+    @Res() res: Response,
+  ) {
     try {
       // Güvenlik kontrolü
       if (!filename || filename.includes('..') || filename.includes('/')) {
@@ -231,13 +239,13 @@ export class ProfileController {
       }
 
       const result = await this.profileService.downloadAvatar(filename);
-      
+
       // Content type belirle
       const contentType = filename.endsWith('.png')
         ? 'image/png'
         : filename.endsWith('.webp')
-        ? 'image/webp'
-        : 'image/jpeg';
+          ? 'image/webp'
+          : 'image/jpeg';
 
       res.setHeader('Content-Type', contentType);
       res.setHeader('Cache-Control', 'public, max-age=31536000');
@@ -267,5 +275,15 @@ export class ProfileController {
       updateLocationDto.latitude,
       updateLocationDto.longitude,
     );
+  }
+
+  @Get('location')
+  async getLocation(@Request() req: RequestWithUser) {
+    const userId = req.user?.id;
+    if (!userId) {
+      throw new BadRequestException('User ID bulunamadı');
+    }
+
+    return this.profileService.getLocation(userId);
   }
 }
