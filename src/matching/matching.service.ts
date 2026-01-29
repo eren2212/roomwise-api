@@ -1,4 +1,8 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { PREFERENCE_MAP, WEIGHTS } from './dto/enum.dto';
 import { Database } from 'src/database.types';
@@ -21,17 +25,24 @@ export class MatchingService {
   }
 
   // 1. ANA FONKSİYON: Kullanıcıya uygun adayları bul
-  async findMatchesForUser(userId: string, lat: number, lng: number, radiusKm: number) {
+  async findMatchesForUser(
+    userId: string,
+    lat: number,
+    lng: number,
+    radiusKm: number,
+  ) {
     const radiusMeters = radiusKm * 1000;
 
-    // A) SQL RPC Fonksiyonunu Çağır (Coğrafi + Filtreleme)
-    const { data: candidates, error } = await this.supabase
-      .rpc('get_nearby_candidates', {
+    // A) RPC Çağır
+    const { data: candidates, error } = await this.supabase.rpc(
+      'get_nearby_candidates',
+      {
         query_user_id: userId,
         center_lat: lat,
         center_long: lng,
         radius_meters: radiusMeters,
-      });
+      },
+    );
 
     if (error) {
       console.error('RPC Hatası:', error);
@@ -40,7 +51,7 @@ export class MatchingService {
 
     if (!candidates || candidates.length === 0) return [];
 
-    // B) Benim Tercihlerimi Çek
+    // B) Benim Tercihlerim
     const { data: myPrefs, error: myPrefsError } = await this.supabase
       .from('user_preferences')
       .select('*')
@@ -51,38 +62,80 @@ export class MatchingService {
       throw new Error(`Tercihler çekilemedi: ${myPrefsError.message}`);
     }
 
-    // C) Adayların Tercihlerini Toplu Çek (Tek tek sorgu atmaktan daha hızlıdır)
+    // C) Adayların Tercihleri
     const candidateIds = candidates.map((c: any) => c.id);
     const { data: candidatePrefsList } = await this.supabase
       .from('user_preferences')
       .select('*')
       .in('user_id', candidateIds);
 
-    // D) Her Aday İçin Puan Hesapla
-    const results = candidates.map((candidate: any) => {
-      // Adayın tercih verisini bul
-      const candidatePrefs = candidatePrefsList?.find((p) => p.user_id === candidate.id);
-      
-      // Eğer tercih verisi yoksa (yeni üye vb.) varsayılan %50 ver
-      if (!myPrefs || !candidatePrefs) {
-        return { ...candidate, match_score: 50 }; 
-      }
+    // --- KATALOG ÇEKME ---
+    // TypeScript burada hata vermesin diye sonucu 'any' olarak işaretleyebiliriz
+    // Ama en temiz çözüm aşağıda map içinde 'as any' kullanmaktır.
+    const { data: catalog } = await this.supabase
+      .from('question_catalog')
+      .select('target_column, icon_name, options, label_tr');
 
-      // Algoritmayı Çalıştır
-      const score = this.calculateWeightedEuclidean(myPrefs, candidatePrefs);
-      
+    // D) Birleştirme
+    const results = candidates.map((candidate: any) => {
+      const rawPrefs = candidatePrefsList?.find(
+        (p) => p.user_id === candidate.id,
+      );
+
+      const score =
+        myPrefs && rawPrefs
+          ? this.calculateWeightedEuclidean(myPrefs, rawPrefs)
+          : 50;
+
+      // --- İSTEDİĞİN KISIM VE DÜZELTME ---
+      const preferencesList = catalog
+        // BURASI DEĞİŞTİ: (catItem: any) diyerek TypeScript kontrolünü aşıyoruz
+        ?.map((item: any) => {
+          const catItem = item; // Artık hata vermez
+
+          // 1. Sütun Adı
+          const column = catItem.target_column;
+
+          // 2. İKON
+          const staticIcon = catItem.icon_name;
+
+          // 3. Değer
+          const userValue = rawPrefs ? rawPrefs[column] : null;
+
+          // 4. Label
+          const optionsArray = catItem.options as any[];
+
+          const labelData = Array.isArray(optionsArray)
+            ? optionsArray.find((opt: any) => opt.value === userValue)
+            : null;
+
+          return {
+            key: column,
+            icon: staticIcon,
+            title: catItem.label_tr || 'Bilinmiyor', // Artık hata vermez
+            value: userValue,
+            label: labelData?.label || 'Belirtilmemiş',
+          };
+        })
+        .filter((item) => item.value !== null);
+
       return {
         ...candidate,
         match_score: score,
+        preferences: preferencesList || [],
       };
     });
 
-    // Puanı yüksek olanı en üste sırala
     return results.sort((a, b) => b.match_score - a.match_score);
   }
 
   // 2. SWIPE İŞLEMİ: Like/Dislike/Superlike
-  async createSwipe(swiperId: string, swipedId: string, action: SwipeAction, houseId?: string) {
+  async createSwipe(
+    swiperId: string,
+    swipedId: string,
+    action: SwipeAction,
+    houseId?: string,
+  ) {
     // Kendine swipe yapamaz
     if (swiperId === swipedId) {
       throw new BadRequestException('Kendine swipe yapamazsın');
@@ -125,7 +178,9 @@ export class MatchingService {
       const { data: match } = await this.supabase
         .from('matches')
         .select('*')
-        .or(`and(user1_id.eq.${swiperId},user2_id.eq.${swipedId}),and(user1_id.eq.${swipedId},user2_id.eq.${swiperId})`)
+        .or(
+          `and(user1_id.eq.${swiperId},user2_id.eq.${swipedId}),and(user1_id.eq.${swipedId},user2_id.eq.${swiperId})`,
+        )
         .single();
 
       return {
@@ -146,11 +201,13 @@ export class MatchingService {
   async getUserMatches(userId: string) {
     const { data: matches, error } = await this.supabase
       .from('matches')
-      .select(`
+      .select(
+        `
         *,
         user1:user1_id(id, full_name, avatar_url, bio, occupation, university),
         user2:user2_id(id, full_name, avatar_url, bio, occupation, university)
-      `)
+      `,
+      )
       .or(`user1_id.eq.${userId},user2_id.eq.${userId}`)
       .eq('is_active', true)
       .order('created_at', { ascending: false });
@@ -179,11 +236,13 @@ export class MatchingService {
   async getMatchById(matchId: string, userId: string) {
     const { data: match, error } = await this.supabase
       .from('matches')
-      .select(`
+      .select(
+        `
         *,
         user1:user1_id(id, full_name, avatar_url, bio, birth_date, gender, occupation, university, department),
         user2:user2_id(id, full_name, avatar_url, bio, birth_date, gender, occupation, university, department)
-      `)
+      `,
+      )
       .eq('id', matchId)
       .single();
 
@@ -224,13 +283,16 @@ export class MatchingService {
   }
 
   // 5. YARDIMCI FONKSİYON: Weighted Euclidean Distance
-  private calculateWeightedEuclidean(userA: UserPreference, userB: UserPreference): number {
+  private calculateWeightedEuclidean(
+    userA: UserPreference,
+    userB: UserPreference,
+  ): number {
     let totalWeightedDiff = 0;
     let maxPossibleWeightedDiff = 0;
 
     for (const key of Object.keys(WEIGHTS) as Array<keyof typeof WEIGHTS>) {
       const weight = WEIGHTS[key];
-      
+
       // Enum'ı Sayıya Çevir (Constants dosyasındaki haritayı kullanır)
       const valA = this.getNumericValue(key, userA[key] as string);
       const valB = this.getNumericValue(key, userB[key] as string);
@@ -241,7 +303,7 @@ export class MatchingService {
       // Öklid Farkı: (A - B)^2 * Ağırlık
       const diff = Math.pow(valA - valB, 2);
       totalWeightedDiff += diff * weight;
-      
+
       // Normalizasyon için max farkı hesapla (maksimum fark 1 olabilir: 1.0 - 0.0 = 1)
       maxPossibleWeightedDiff += Math.pow(1, 2) * weight;
     }
@@ -252,7 +314,7 @@ export class MatchingService {
     if (maxDistance === 0) return 100;
 
     // Mesafeyi Benzerlik Yüzdesine Çevir
-    const similarity = 1 - (euclideanDistance / maxDistance);
+    const similarity = 1 - euclideanDistance / maxDistance;
     return Math.round(similarity * 100);
   }
 
@@ -262,7 +324,7 @@ export class MatchingService {
     if (!PREFERENCE_MAP[category]) return null;
     // Değer var mı? (örn: no_smoke)
     if (PREFERENCE_MAP[category][value] === undefined) return null;
-    
+
     return PREFERENCE_MAP[category][value];
   }
 }
