@@ -7,6 +7,7 @@ import { SupabaseModule } from './supabase/supabase.module';
 import { ProfileModule } from './profile/profile.module';
 import { IdentityModule } from './identity/identity.module';
 import { MatchingModule } from './matching/matching.module';
+import { HouseModule } from './house/house.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { MatchingModule } from './matching/matching.module';
     ProfileModule,
     IdentityModule,
     MatchingModule,
+    HouseModule,
   ],
   controllers: [AppController],
   providers: [AppService],
