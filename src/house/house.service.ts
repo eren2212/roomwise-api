@@ -305,6 +305,94 @@ export class HouseService {
   }
 
   /**
+   * Kullanıcının aktif ev üyeliğini ve ev arkadaşlarını getir
+   */
+  async getMyMembership(userId: string): Promise<{
+    house: House;
+    members: Array<{
+      id: string;
+      user_id: string;
+      role: string;
+      joined_at: string;
+      profile: {
+        id: string;
+        full_name: string;
+        avatar_url: string | null;
+      };
+    }>;
+    currentUserId: string;
+  } | null> {
+    // Kullanıcının aktif üyeliğini bul (left_at IS NULL)
+    const { data: membership, error: membershipError } = await this.supabase
+      .from('house_members')
+      .select('house_id')
+      .eq('user_id', userId)
+      .is('left_at', null)
+      .single();
+
+    if (membershipError || !membership) {
+      return null;
+    }
+
+    const houseId = membership.house_id;
+
+    // Ev detayını getir
+    const { data: house, error: houseError } = await this.supabase
+      .from('houses')
+      .select('*')
+      .eq('id', houseId)
+      .single();
+
+    if (houseError || !house) {
+      return null;
+    }
+
+    // Aynı evin tüm aktif üyelerini getir (profiles ile join)
+    const { data: members, error: membersError } = await this.supabase
+      .from('house_members')
+      .select(
+        `
+        id,
+        user_id,
+        role,
+        joined_at,
+        profiles:user_id (
+          id,
+          full_name,
+          avatar_url
+        )
+      `,
+      )
+      .eq('house_id', houseId)
+      .is('left_at', null);
+
+    if (membersError) {
+      throw new BadRequestException(
+        `Ev üyeleri getirilemedi: ${membersError.message}`,
+      );
+    }
+
+    // Profiles nesnesini düzleştir
+    const formattedMembers = (members || []).map((member: any) => ({
+      id: member.id,
+      user_id: member.user_id,
+      role: member.role,
+      joined_at: member.joined_at,
+      profile: member.profiles || {
+        id: member.user_id,
+        full_name: 'Bilinmiyor',
+        avatar_url: null,
+      },
+    }));
+
+    return {
+      house: house as House,
+      members: formattedMembers,
+      currentUserId: userId,
+    };
+  }
+
+  /**
    * Ev resmini indir (Public access)
    */
   async downloadHouseImage(

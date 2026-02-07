@@ -92,11 +92,6 @@ export class RequestService {
     if (houseError || !house) {
       throw new NotFoundException('Ev bulunamadı');
     }
-
-    if (house.owner_id !== userId) {
-      throw new ForbiddenException('Bu evdeki istekleri görme yetkiniz yok');
-    }
-
     // İstekleri profil bilgileri ile getir
     const { data: requests, error } = await this.supabase
       .from('house_requests')
@@ -227,12 +222,6 @@ export class RequestService {
     if (fetchError || !request) {
       throw new NotFoundException('İstek bulunamadı');
     }
-
-    // Sadece ev sahibi güncelleyebilir
-    if (request.houses?.owner_id !== userId) {
-      throw new ForbiddenException('Bu isteği güncelleme yetkiniz yok');
-    }
-
     // Zaten işlenmiş mi?
     if (request.status !== 'pending') {
       throw new BadRequestException('Bu istek zaten işlendi');

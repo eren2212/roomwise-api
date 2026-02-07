@@ -130,7 +130,7 @@ export class HouseController {
 
   /**
    * Kullanıcının kendi ilanlarını getir
-   * GET /houses/me
+   * GET /houses/me/listings
    */
   @Get('me/listings')
   async getMyHouses(@Request() req: RequestWithUser) {
@@ -140,6 +140,21 @@ export class HouseController {
     return {
       success: true,
       data: houses,
+    };
+  }
+
+  /**
+   * Kullanıcının aktif ev üyeliğini ve ev arkadaşlarını getir
+   * GET /houses/me/membership
+   */
+  @Get('me/membership')
+  async getMyMembership(@Request() req: RequestWithUser) {
+    const userId = req.user!.id;
+    const membership = await this.houseService.getMyMembership(userId);
+
+    return {
+      success: true,
+      data: membership,
     };
   }
 
