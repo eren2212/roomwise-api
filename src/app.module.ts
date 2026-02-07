@@ -8,6 +8,7 @@ import { ProfileModule } from './profile/profile.module';
 import { IdentityModule } from './identity/identity.module';
 import { MatchingModule } from './matching/matching.module';
 import { HouseModule } from './house/house.module';
+import { RequestModule } from './request/request.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { HouseModule } from './house/house.module';
     IdentityModule,
     MatchingModule,
     HouseModule,
+    RequestModule,
   ],
   controllers: [AppController],
   providers: [AppService],
