@@ -9,6 +9,7 @@ import { IdentityModule } from './identity/identity.module';
 import { MatchingModule } from './matching/matching.module';
 import { HouseModule } from './house/house.module';
 import { RequestModule } from './request/request.module';
+import { ChatModule } from './chat/chat.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { RequestModule } from './request/request.module';
     MatchingModule,
     HouseModule,
     RequestModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [AppService],
