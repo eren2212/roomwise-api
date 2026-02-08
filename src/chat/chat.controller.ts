@@ -12,7 +12,7 @@ import {
 import { ChatService } from './chat.service';
 import { SupabaseGuard } from '../auth/supabase.guard';
 import type { RequestWithUser } from '../auth/supabase.guard';
-import { CreateMessageDto } from './dto';
+import { CreateMessageDto, CreateGroupConversationDto } from './dto';
 
 @Controller('chat')
 @UseGuards(SupabaseGuard)
@@ -117,6 +117,49 @@ export class ChatController {
     return {
       success: true,
       message: 'Konuşma oluşturuldu',
+      data: conversation,
+    };
+  }
+
+  /**
+   * Ev için grup konuşması oluştur
+   * POST /chat/conversations/group
+   */
+  @Post('conversations/group')
+  async createGroupConversation(
+    @Request() req: RequestWithUser,
+    @Body() createGroupConversationDto: CreateGroupConversationDto,
+  ) {
+    const userId = req.user!.id;
+    const conversation = await this.chatService.createGroupConversation(
+      userId,
+      createGroupConversationDto.houseId,
+    );
+
+    return {
+      success: true,
+      message: 'Grup konuşması oluşturuldu',
+      data: conversation,
+    };
+  }
+
+  /**
+   * Ev için grup konuşmasını getir
+   * GET /chat/conversations/house/:houseId
+   */
+  @Get('conversations/house/:houseId')
+  async getHouseConversation(
+    @Request() req: RequestWithUser,
+    @Param('houseId') houseId: string,
+  ) {
+    const userId = req.user!.id;
+    const conversation = await this.chatService.getHouseConversation(
+      userId,
+      houseId,
+    );
+
+    return {
+      success: true,
       data: conversation,
     };
   }

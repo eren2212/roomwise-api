@@ -317,4 +317,185 @@ export class ChatService {
 
     return fullConversation as ConversationWithParticipants;
   }
+
+  /**
+   * Ev için grup konuşması oluştur veya mevcut olanı getir
+   */
+  async createGroupConversation(
+    userId: string,
+    houseId: string,
+  ): Promise<ConversationWithParticipants> {
+    // Kullanıcının bu evin üyesi olup olmadığını kontrol et
+    const { data: membership, error: membershipError } = await this.supabase
+      .from('house_members')
+      .select('id')
+      .eq('house_id', houseId)
+      .eq('user_id', userId)
+      .single();
+
+    if (membershipError || !membership) {
+      throw new ForbiddenException('Bu eve ait değilsiniz');
+    }
+
+    // Bu ev için var olan grup konuşmasını kontrol et
+    const { data: existingConversation } = await this.supabase
+      .from('conversations')
+      .select(
+        `
+        *,
+        conversation_participants (
+          id,
+          user_id,
+          last_read_at,
+          joined_at,
+          profiles (
+            id,
+            full_name,
+            avatar_url
+          )
+        )
+      `,
+      )
+      .eq('house_id', houseId)
+      .eq('type', 'group')
+      .single();
+
+    if (existingConversation) {
+      return existingConversation as ConversationWithParticipants;
+    }
+
+    // Yeni grup konuşması oluştur
+    const { data: conversation, error: conversationError } = await this.supabase
+      .from('conversations')
+      .insert({
+        type: 'group',
+        house_id: houseId,
+      })
+      .select()
+      .single();
+
+    if (conversationError) {
+      throw new BadRequestException(
+        `Grup konuşması oluşturulamadı: ${conversationError.message}`,
+      );
+    }
+
+    // Evin tüm üyelerini konuşmaya ekle
+    const { data: houseMembers, error: membersError } = await this.supabase
+      .from('house_members')
+      .select('user_id')
+      .eq('house_id', houseId);
+
+    if (membersError || !houseMembers || houseMembers.length === 0) {
+      // Konuşmayı sil (rollback)
+      await this.supabase
+        .from('conversations')
+        .delete()
+        .eq('id', conversation.id);
+      throw new BadRequestException('Ev üyeleri bulunamadı');
+    }
+
+    // Katılımcıları ekle
+    const participants = houseMembers.map((member) => ({
+      conversation_id: conversation.id,
+      user_id: member.user_id,
+    }));
+
+    const { error: participantsError } = await this.supabase
+      .from('conversation_participants')
+      .insert(participants);
+
+    if (participantsError) {
+      // Konuşmayı sil (rollback)
+      await this.supabase
+        .from('conversations')
+        .delete()
+        .eq('id', conversation.id);
+      throw new BadRequestException(
+        `Katılımcılar eklenemedi: ${participantsError.message}`,
+      );
+    }
+
+    // Katılımcılarla birlikte getir
+    const { data: fullConversation, error: fetchError } = await this.supabase
+      .from('conversations')
+      .select(
+        `
+        *,
+        conversation_participants (
+          id,
+          user_id,
+          last_read_at,
+          joined_at,
+          profiles (
+            id,
+            full_name,
+            avatar_url
+          )
+        )
+      `,
+      )
+      .eq('id', conversation.id)
+      .single();
+
+    if (fetchError) {
+      throw new BadRequestException(
+        `Konuşma getirilemedi: ${fetchError.message}`,
+      );
+    }
+
+    return fullConversation as ConversationWithParticipants;
+  }
+
+  /**
+   * Ev için grup konuşmasını getir
+   */
+  async getHouseConversation(
+    userId: string,
+    houseId: string,
+  ): Promise<ConversationWithParticipants> {
+    // Kullanıcının bu evin üyesi olup olmadığını kontrol et
+    const { data: membership, error: membershipError } = await this.supabase
+      .from('house_members')
+      .select('id')
+      .eq('house_id', houseId)
+      .eq('user_id', userId)
+      .eq('status', 'verified')
+      .single();
+
+    if (membershipError || !membership) {
+      throw new ForbiddenException('Bu eve ait değilsiniz');
+    }
+
+    // Grup konuşmasını getir
+    const { data: conversation, error: conversationError } = await this.supabase
+      .from('conversations')
+      .select(
+        `
+        *,
+        conversation_participants (
+          id,
+          user_id,
+          last_read_at,
+          joined_at,
+          profiles (
+            id,
+            full_name,
+            avatar_url
+          )
+        )
+      `,
+      )
+      .eq('house_id', houseId)
+      .eq('type', 'group')
+      .single();
+
+    if (conversationError || !conversation) {
+      throw new BadRequestException(
+        'Bu ev için henüz bir grup konuşması oluşturulmamış',
+      );
+    }
+
+    return conversation as ConversationWithParticipants;
+  }
 }
